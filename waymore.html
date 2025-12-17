@@ -1,0 +1,236 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wayback Query Parameter Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117; /* Dark background */
+            color: #c9d1d9; /* Light text */
+        }
+        .container-card {
+            background-color: #161b22; /* Card background */
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+        .text-area {
+            background-color: #010409;
+            border: 1px solid #484f58;
+            color: #e6edf3;
+            font-family: monospace;
+        }
+        .param-table th, .param-table td {
+            border-bottom: 1px solid #30363d;
+            padding: 12px;
+        }
+        .param-table th {
+            text-align: left;
+            background-color: #21262d;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-8 min-h-screen">
+
+    <div class="max-w-4xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-[#58a6ff]">
+                Query Parameter Extractor (Wayback Hunter)
+            </h1>
+            <p class="text-gray-400 mt-2">
+                Paste your list of URLs to find and count all unique query parameters. Handles double encoding.
+            </p>
+        </header>
+
+        <div id="app" class="container-card p-6 rounded-xl">
+            <!-- Input Area -->
+            <div class="mb-6">
+                <label for="urlInput" class="block text-sm font-medium mb-2 text-gray-300">
+                    Enter URLs (one per line):
+                </label>
+                <textarea id="urlInput" rows="10" class="text-area w-full rounded-lg p-3 focus:ring-2 focus:ring-[#58a6ff] resize-y" placeholder="e.g., https://example.com/page?param1=value1..."></textarea>
+            </div>
+
+            <button onclick="analyzeUrls()" class="w-full bg-[#238636] hover:bg-[#2ea043] text-white font-bold py-3 px-4 rounded-lg transition duration-200 focus:outline-none focus:ring-4 focus:ring-[#238636]/50">
+                Analyze Parameters
+            </button>
+
+            <!-- Results Area -->
+            <div id="results" class="mt-8 hidden">
+                <h2 class="text-2xl font-semibold mb-4 text-gray-200">Analysis Results</h2>
+
+                <div class="bg-blue-900/20 text-blue-300 p-4 rounded-lg mb-4 text-sm">
+                    <p id="totalUrls"></p>
+                    <p id="paramsFound"></p>
+                </div>
+
+                <div id="paramListContainer" class="overflow-x-auto">
+                    <table class="param-table min-w-full rounded-xl overflow-hidden">
+                        <thead>
+                            <tr>
+                                <th class="w-2/3">Parameter Name</th>
+                                <th class="w-1/3">Total Count</th>
+                            </tr>
+                        </thead>
+                        <tbody id="paramList">
+                            <!-- Results will be injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Message Box for errors/warnings -->
+            <div id="messageBox" class="mt-6 hidden p-4 rounded-lg bg-yellow-900/30 text-yellow-300 text-sm"></div>
+        </div>
+    </div>
+
+    <script>
+        // Global map to store parameter counts
+        let parameterCounts = new Map();
+        
+        /**
+         * Recursively decodes a string until no further decoding is possible 
+         * or a max depth is reached. This is crucial for handling double-encoded 
+         * parameters (e.g., param1=val1%2526param2=val2).
+         * @param {string} str The string to decode.
+         * @returns {string} The fully decoded string.
+         */
+        function deepDecode(str) {
+            let decoded = str;
+            let prev = '';
+            // We use a safe loop limit (e.g., 5) to prevent infinite loops,
+            // though most real-world scenarios won't exceed 2 or 3 decodings.
+            for (let i = 0; i < 5; i++) {
+                prev = decoded;
+                try {
+                    // Replace '+' with space first, then decode
+                    let temp = decoded.replace(/\+/g, ' ');
+                    decoded = decodeURIComponent(temp);
+                } catch (e) {
+                    // Stop if decodeURIComponent fails (e.g., incomplete sequences)
+                    break;
+                }
+                // If the string didn't change, we're done
+                if (decoded === prev) break;
+            }
+            return decoded;
+        }
+
+        /**
+         * Extracts and counts unique parameter names from a single URL.
+         * @param {string} url The URL string.
+         */
+        function processUrl(url) {
+            // 1. Find the start of the query string (after the first '?')
+            const queryIndex = url.indexOf('?');
+            if (queryIndex === -1) return;
+
+            const rawQuery = url.substring(queryIndex + 1);
+            if (!rawQuery) return;
+
+            // 2. Deeply decode the entire query string to handle encoded separators (&, =, ?)
+            const decodedQuery = deepDecode(rawQuery);
+
+            // 3. Split the fully decoded query string by '&' (the standard delimiter)
+            const paramSegments = decodedQuery.split('&').filter(s => s.trim() !== '');
+
+            for (const segment of paramSegments) {
+                // 4. Split by '=' to get the parameter name
+                const equalsIndex = segment.indexOf('=');
+                let paramName;
+                
+                if (equalsIndex === -1) {
+                    // Handle parameters without values (e.g., ?debug or ?p1&p2)
+                    paramName = segment.trim();
+                } else {
+                    paramName = segment.substring(0, equalsIndex).trim();
+                }
+
+                // 5. Cleanup the name and count it
+                if (paramName) {
+                    // We decode the parameter name one last time in case the name itself was encoded after splitting
+                    const finalName = deepDecode(paramName);
+                    
+                    if (parameterCounts.has(finalName)) {
+                        parameterCounts.set(finalName, parameterCounts.get(finalName) + 1);
+                    } else {
+                        parameterCounts.set(finalName, 1);
+                    }
+                }
+            }
+        }
+
+        /**
+         * Main function triggered by the button click.
+         */
+        function analyzeUrls() {
+            const urlInput = document.getElementById('urlInput').value.trim();
+            const resultsDiv = document.getElementById('results');
+            const paramListBody = document.getElementById('paramList');
+            const messageBox = document.getElementById('messageBox');
+            
+            // Reset state
+            parameterCounts.clear();
+            paramListBody.innerHTML = '';
+            messageBox.classList.add('hidden');
+            resultsDiv.classList.add('hidden');
+
+            if (!urlInput) {
+                messageBox.textContent = "Please paste URLs into the text area to begin analysis.";
+                messageBox.classList.remove('hidden');
+                return;
+            }
+
+            // Split the input into individual URLs, filtering out empty lines
+            const urls = urlInput.split('\n').map(url => url.trim()).filter(url => url.length > 0);
+            
+            if (urls.length === 0) {
+                messageBox.textContent = "No valid URLs found in the input.";
+                messageBox.classList.remove('hidden');
+                return;
+            }
+
+            // Process all URLs
+            urls.forEach(processUrl);
+
+            // Display results
+            if (parameterCounts.size > 0) {
+                // Convert map to array for sorting (by count, then alphabetically)
+                const sortedParams = Array.from(parameterCounts.entries()).sort((a, b) => {
+                    if (b[1] !== a[1]) {
+                        return b[1] - a[1]; // Sort by count descending
+                    }
+                    return a[0].localeCompare(b[0]); // Then by name ascending
+                });
+
+                sortedParams.forEach(([name, count]) => {
+                    const row = paramListBody.insertRow();
+                    row.className = "hover:bg-gray-800 transition duration-150";
+                    
+                    const nameCell = row.insertCell(0);
+                    nameCell.textContent = name;
+                    nameCell.className = "font-mono text-pink-400 break-all";
+
+                    const countCell = row.insertCell(1);
+                    countCell.textContent = count.toLocaleString();
+                    countCell.className = "text-right font-bold text-teal-400";
+                });
+
+                document.getElementById('totalUrls').textContent = `Total URLs Analyzed: ${urls.length.toLocaleString()}`;
+                document.getElementById('paramsFound').textContent = `Total Unique Parameters Found: ${parameterCounts.size.toLocaleString()}`;
+
+                resultsDiv.classList.remove('hidden');
+            } else {
+                messageBox.textContent = `Analysis complete. Found ${urls.length.length} URLs, but no query parameters were extracted.`;
+                messageBox.classList.remove('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
+
