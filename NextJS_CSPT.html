@@ -1,0 +1,303 @@
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Next.js Dynamic Route Generator</title>
+        <!-- Load Tailwind CSS -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <style>
+            /* Custom scrollbar for the output area */
+            #output-area::-webkit-scrollbar {
+                width: 8px;
+            }
+            #output-area::-webkit-scrollbar-thumb {
+                background-color: #9ca3af;
+                border-radius: 4px;
+            }
+            #output-area::-webkit-scrollbar-track {
+                background: #f3f4f6;
+            }
+        </style>
+    </head>
+    <body class="bg-gray-50 min-h-screen p-4 sm:p-8 font-sans">
+        <div class="max-w-4xl mx-auto">
+            <header class="text-center mb-8">
+                <h1 class="text-4xl font-extrabold text-indigo-700 mb-2">
+                    Next.js Dynamic Route Generator
+                </h1>
+                <p class="text-lg text-gray-600">
+                    Extracts and constructs URLs for parameterized routes from a
+                    `_buildmanifest` file.
+                </p>
+            </header>
+
+            <div
+                class="bg-white p-6 sm:p-8 rounded-xl shadow-2xl border border-indigo-100"
+            >
+                <!-- Base URL Input -->
+                <div class="mb-6">
+                    <label
+                        for="baseUrl"
+                        class="block text-sm font-medium text-gray-700 mb-2"
+                        >Base Application URL (e.g., https://example.com)</label
+                    >
+                    <input
+                        type="url"
+                        id="baseUrl"
+                        value="https://example.com"
+                        placeholder="https://your-domain.com"
+                        class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-gray-800"
+                    />
+                </div>
+
+                <!-- Manifest Content Input -->
+                <div class="mb-6">
+                    <label
+                        for="manifest"
+                        class="block text-sm font-medium text-gray-700 mb-2"
+                    >
+                        Paste `self.__BUILD_MANIFEST` Content Here
+                    </label>
+                    <textarea
+                        id="manifest"
+                        rows="12"
+                        class="w-full p-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm resize-y"
+                        placeholder="Paste the content of self.__BUILD_MANIFEST = function(...) { return { ... } } here..."
+                    ></textarea>
+                </div>
+
+                <!-- Action Button -->
+                <div class="flex justify-center">
+                    <button
+                        id="generateButton"
+                        onclick="processManifest()"
+                        class="w-full sm:w-auto px-8 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-lg hover:bg-indigo-700 transition duration-150 ease-in-out transform hover:scale-[1.01] focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50"
+                    >
+                        Generate Dynamic URLs
+                    </button>
+                </div>
+
+                <!-- Error and Info Messages -->
+                <div
+                    id="message-box"
+                    class="mt-6 p-3 rounded-lg text-sm text-center hidden"
+                ></div>
+
+                <!-- Output Area -->
+                <div class="mt-8 pt-6 border-t border-gray-200">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-4">
+                        Generated URLs (<span id="urlCount">0</span>)
+                    </h2>
+                    <div
+                        id="output-area"
+                        class="bg-gray-50 p-4 border border-gray-300 rounded-lg shadow-inner max-h-96 overflow-y-auto"
+                    >
+                        <p class="text-gray-500 text-sm italic">
+                            Click 'Generate Dynamic URLs' to see the results
+                            here.
+                        </p>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                        <button
+                            id="copyButton"
+                            onclick="copyUrls()"
+                            class="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition duration-150 ease-in-out disabled:opacity-50"
+                            disabled
+                        >
+                            Copy All URLs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            const manifestTextarea = document.getElementById("manifest");
+            const baseUrlInput = document.getElementById("baseUrl");
+            const outputArea = document.getElementById("output-area");
+            const urlCountSpan = document.getElementById("urlCount");
+            const messageBox = document.getElementById("message-box");
+            const copyButton = document.getElementById("copyButton");
+
+            // Provide a sample manifest for easy testing
+            const sampleManifest = `Yo`;
+
+            window.onload = () => {
+                manifestTextarea.value = sampleManifest;
+            };
+
+            function displayMessage(text, isError = false) {
+                messageBox.textContent = text;
+                messageBox.className = `mt-6 p-3 rounded-lg text-sm text-center ${isError ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"}`;
+                messageBox.classList.remove("hidden");
+            }
+
+            function clearMessages() {
+                messageBox.classList.add("hidden");
+                messageBox.textContent = "";
+            }
+
+            function processManifest() {
+                clearMessages();
+                outputArea.innerHTML = "";
+                urlCountSpan.textContent = "0";
+                copyButton.disabled = true;
+
+                const manifestText = manifestTextarea.value.trim();
+                const baseUrl = baseUrlInput.value.trim();
+
+                if (!baseUrl) {
+                    return displayMessage(
+                        "Please provide a Base Application URL.",
+                        true,
+                    );
+                }
+                if (!manifestText) {
+                    return displayMessage(
+                        "Please paste the _buildmanifest file content.",
+                        true,
+                    );
+                }
+
+                try {
+                    const generatedUrls = generateUrls(manifestText, baseUrl);
+
+                    if (generatedUrls.length === 0) {
+                        return displayMessage(
+                            "No dynamic routes found with parameters ([...]) in the provided manifest.",
+                            true,
+                        );
+                    }
+
+                    // Display URLs in an ordered list
+                    const ul = document.createElement("ul");
+                    ul.className = "space-y-3";
+                    let allUrlsText = "";
+
+                    generatedUrls.forEach((url) => {
+                        const li = document.createElement("li");
+                        li.className =
+                            "p-3 bg-white border border-gray-200 rounded-md text-sm text-indigo-800 break-words font-mono shadow-sm";
+                        li.textContent = url;
+                        ul.appendChild(li);
+                        allUrlsText += url + "\n";
+                    });
+
+                    outputArea.innerHTML = "";
+                    outputArea.appendChild(ul);
+                    urlCountSpan.textContent = generatedUrls.length;
+                    copyButton.disabled = false;
+
+                    // Store URLs for copying
+                    outputArea.dataset.urls = allUrlsText.trim();
+                    displayMessage(
+                        `Successfully generated ${generatedUrls.length} dynamic URL${generatedUrls.length !== 1 ? "s" : ""}.`,
+                    );
+                } catch (error) {
+                    console.error("Manifest processing failed:", error);
+                    displayMessage(
+                        `An error occurred during processing: ${error.message}`,
+                        true,
+                    );
+                }
+            }
+
+            /**
+             * Core logic to extract and transform paths.
+             * @param {string} manifestText The content of the _buildmanifest file.
+             * @param {string} baseUrl The base URL to prefix the paths with.
+             * @returns {string[]} An array of generated URLs.
+             */
+            function generateUrls(manifestText, baseUrl) {
+                const urlList = [];
+
+                // 1. Sanitize Base URL (remove protocol and normalize)
+                let sanitizedBaseUrl = baseUrl;
+                // Ensure protocol is present for a valid URL, default to https
+                if (!sanitizedBaseUrl.startsWith("http")) {
+                    sanitizedBaseUrl = "https://" + sanitizedBaseUrl;
+                }
+                // Remove any trailing slash to avoid double slashes when joining with path
+                sanitizedBaseUrl = sanitizedBaseUrl.replace(/\/+$/, "");
+
+                // 2. Extract potential paths from the manifest content keys.
+                // Looks for quoted keys that start with a slash and are followed by a colon and an array bracket.
+                const pathRegex = /"(\/.*?)"\s*:/g;
+                let match;
+                const dynamicPaths = new Set();
+
+                while ((match = pathRegex.exec(manifestText)) !== null) {
+                    const path = match[1];
+                    // Check if the path contains a Next.js parameter structure
+                    if (path.includes("[")) {
+                        dynamicPaths.add(path);
+                    }
+                }
+
+                // 3. Process each dynamic path to generate the final URL
+                dynamicPaths.forEach((path) => {
+                    // Regex to find dynamic segments: [param], [[...param]], or [...param]
+                    const paramRegex = /(\[.*?\])/g;
+
+                    // Find all matches to determine the total count
+                    const allMatches = Array.from(path.matchAll(paramRegex));
+                    const totalParams = allMatches.length;
+                    let counter = 0;
+
+                    const finalPath = path.replace(paramRegex, (match) => {
+                        counter++;
+                        // Apply the rule: 'magun4' if a single parameter, or 'magun4_N' if multiple.
+                        // Note: This logic assumes that for a path like /a/[b]/[c], the user wants magun4_1/magun4_2.
+                        if (totalParams === 1) {
+                            return "magun4";
+                        } else {
+                            // The user's example shows sequential numbering for all multiple parameters, starting from 1
+                            // /integration/live/guest/[sessionType]/[sessionId]/[sessionCode] -> magun4_1/magun4_2/magun4_3
+                            return `magun4_${counter}`;
+                        }
+                    });
+
+                    // Construct the final URL (path already starts with a single slash)
+                    urlList.push(`${sanitizedBaseUrl}${finalPath}`);
+                });
+
+                return urlList;
+            }
+
+            function copyUrls() {
+                const urls = outputArea.dataset.urls;
+                if (!urls) {
+                    displayMessage("No URLs to copy.", true);
+                    return;
+                }
+
+                // Fallback for secure context copy
+                if (document.execCommand("copy")) {
+                    const textarea = document.createElement("textarea");
+                    textarea.value = urls;
+                    textarea.style.position = "fixed"; // Prevents scrolling to the bottom
+                    document.body.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    try {
+                        document.execCommand("copy");
+                        displayMessage(
+                            "All generated URLs copied to clipboard!",
+                            false,
+                        );
+                    } catch (err) {
+                        displayMessage("Failed to copy to clipboard.", true);
+                    }
+                    document.body.removeChild(textarea);
+                } else {
+                    displayMessage(
+                        "Automatic copy failed. Please manually select and copy the list.",
+                        true,
+                    );
+                }
+            }
+        </script>
+    </body>
+</html>
