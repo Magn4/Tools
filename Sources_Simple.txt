@@ -1,0 +1,1 @@
+\b(?:(?:window\.)?location\.(?:search|hash|pathname|href|toString)|document\.(?:URL|documentURI|URLUnencoded|baseURI)|SearchParams\.get)\b
