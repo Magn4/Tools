@@ -1,0 +1,9 @@
+{
+  "name": "cspt-tool",
+  "version": "1.0.0",
+  "description": "CLI to extract parameterized paths and generate magun4 test URLs",
+  "bin": {
+    "cspt": "./extract-paths.js"
+  },
+  "license": "UNLICENSED"
+}
