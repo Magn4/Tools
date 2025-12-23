@@ -1,1 +1,3 @@
 \b(?:(?:window\.)?location\.(?:search|hash|pathname|href|toString)(?:\.split\(['"]&['"]\))?|window\.location\.|document\.(?:referrer|URL|documentURI|URLUnencoded|baseURI|cookie)(?:\.split\(['"]&['"]\))?|URLSearchParams|SearchParams|localStorage|sessionStorage|window\.name|history\.(?:pushState|replaceState)|window\.opener\.location|event\.data|window\.parent\.location|top\.location)\b
+
+(queryParams|substring|URLSearch\(|location\.search|\.searchParams|\.split\("&"\)|split\('&'\)|\(window.location.href\)|window\.name|location\.hash\.substr\(1\)|\[\\\\\?\&\])
